@@ -17,6 +17,7 @@ import type {
   DocumentLink,
   CodeLensParams,
   CodeLens,
+  TextEdit,
 } from 'vscode-languageserver/node'
 import { DiagnosticTag, FileChangeType } from 'vscode-languageserver/node'
 import type { TextDocument } from 'vscode-languageserver-textdocument'
@@ -53,6 +54,7 @@ import type {
 } from '@tailwindcss/language-service/src/util/state'
 import { provideDiagnostics } from './lsp/diagnosticsProvider'
 import { doCodeActions } from '@tailwindcss/language-service/src/codeActions/codeActionProvider'
+import { provideFixAllSuggestionCodeActions } from '@tailwindcss/language-service/src/codeActions/provideFixAllSuggestionCodeActions'
 import { getDocumentColors } from '@tailwindcss/language-service/src/documentColorProvider'
 import { getDocumentLinks } from '@tailwindcss/language-service/src/documentLinksProvider'
 import { debounce } from 'debounce'
@@ -112,6 +114,7 @@ export interface ProjectService {
   onDocumentColor(params: DocumentColorParams): Promise<ColorInformation[]>
   onColorPresentation(params: ColorPresentationParams): Promise<ColorPresentation[]>
   onCodeAction(params: CodeActionParams): Promise<CodeAction[]>
+  getCanonicalClassFixes(document: TextDocument): Promise<TextEdit[]>
   onDocumentLinks(params: DocumentLinkParams): Promise<DocumentLink[]>
   onCodeLens(params: CodeLensParams): Promise<CodeLens[]>
   sortClassLists(classLists: string[]): string[]
@@ -1249,6 +1252,17 @@ export async function createProjectService(
         if (!settings.tailwindCSS.codeActions) return null
         return doCodeActions(state, params, document)
       }, null)
+    },
+    async getCanonicalClassFixes(document: TextDocument): Promise<TextEdit[]> {
+      return withFallback(async () => {
+        if (!state.enabled) return []
+        let settings = await state.editor.getConfiguration(document.uri)
+        if (!settings.tailwindCSS.codeActions) return []
+        if (await isExcluded(state, document)) return []
+
+        let actions = await provideFixAllSuggestionCodeActions(state, document)
+        return actions[0]?.edit?.changes?.[document.uri] ?? []
+      }, Promise.resolve([]))
     },
     onDocumentLinks(params: DocumentLinkParams): Promise<DocumentLink[]> {
       if (!state.enabled) return null
