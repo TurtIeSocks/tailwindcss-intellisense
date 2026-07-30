@@ -142,4 +142,29 @@ withFixture('v4/basic', (c) => {
       },
     ])
   })
+
+  test('workspace canonical class fixes do not require an open document', async () => {
+    await c.openDocument({
+      text: '<div class="flex">',
+      lang: 'html',
+    })
+
+    let uri = c.fixtureUri('v4/basic/unopened-workspace-file.html')
+    let res = await c.sendRequest('@/tailwindCSS/fixAllCanonicalClasses', {
+      textDocument: {
+        uri,
+        languageId: 'html',
+        version: 1,
+        text: '<div class="[@media_print]:flex [color:red]/50 mt-[16px]">',
+      },
+    })
+
+    expect(res).toEqual({
+      edits: [
+        expect.objectContaining({ newText: 'print:flex' }),
+        expect.objectContaining({ newText: 'text-[red]/50' }),
+        expect.objectContaining({ newText: 'mt-4' }),
+      ],
+    })
+  })
 })

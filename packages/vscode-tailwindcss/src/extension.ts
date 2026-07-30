@@ -133,7 +133,9 @@ async function getGitIgnoredFiles(folder: WorkspaceFolder, files: Uri[]): Promis
     return new Set()
   }
 
-  let relativePaths = files.map((file) => normalizePath(path.relative(folder.uri.fsPath, file.fsPath)))
+  let relativePaths = files.map((file) =>
+    normalizePath(path.relative(folder.uri.fsPath, file.fsPath)),
+  )
   let ignored = new Set<string>()
 
   await new Promise<void>((resolve) => {
@@ -309,7 +311,10 @@ export async function activate(context: ExtensionContext) {
 
     let exclude = getWorkspaceFolderExcludeGlob(folder)
     let workspaceEdit = new WorkspaceEdit()
-    let supportedLanguages = new Set([...defaultLanguages, ...Object.keys(getUserLanguages(folder))])
+    let supportedLanguages = new Set([
+      ...defaultLanguages,
+      ...Object.keys(getUserLanguages(folder)),
+    ])
     let files = await Workspace.findFiles(new RelativePattern(folder, '**/*'), exclude)
     let gitIgnoredFiles = await getGitIgnoredFiles(folder, files)
     let processedFiles = 0
@@ -349,21 +354,18 @@ export async function activate(context: ExtensionContext) {
 
           processedFiles += 1
 
-          let codeActions = await client.sendRequest<any[]>('textDocument/codeAction', {
+          let result = await client.sendRequest<
+            { edits: Array<{ range: Range; newText: string }> } | { error: string }
+          >('@/tailwindCSS/fixAllCanonicalClasses', {
             textDocument: {
               uri: uri.toString(),
-            },
-            context: {
-              diagnostics: [],
-              only: ['source.fixAll'],
+              languageId: document.languageId,
+              version: document.version,
+              text: document.getText(),
             },
           })
 
-          let fixAllAction = codeActions?.find(
-            (action) => action?.kind === 'source.fixAll.tailwindcss' && action?.edit?.changes?.[uri.toString()],
-          )
-
-          let edits = fixAllAction?.edit?.changes?.[uri.toString()]
+          let edits = 'edits' in result ? result.edits : []
 
           if (!Array.isArray(edits) || edits.length === 0) {
             continue

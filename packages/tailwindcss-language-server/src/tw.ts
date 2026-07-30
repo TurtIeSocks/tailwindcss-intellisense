@@ -23,6 +23,7 @@ import type {
   CodeLens,
   ServerCapabilities,
   ClientCapabilities,
+  TextEdit,
 } from 'vscode-languageserver/node'
 import {
   CompletionRequest,
@@ -57,6 +58,7 @@ import type { TailwindCssSettings } from '@tailwindcss/language-service/src/util
 import { createResolver, Resolver } from './resolver'
 import { analyzeStylesheet } from './version-guesser.js'
 import { createPathMatcher, PathMatcher } from './matching.js'
+import { TextDocument } from 'vscode-languageserver-textdocument'
 
 const TRIGGER_CHARACTERS = [
   // class attributes
@@ -882,6 +884,17 @@ export class TW {
     method: '@/tailwindCSS/getProject',
     params: { uri: string },
   ): { version: string } | null
+  private onRequest(
+    method: '@/tailwindCSS/fixAllCanonicalClasses',
+    params: {
+      textDocument: {
+        uri: string
+        languageId: string
+        version: number
+        text: string
+      }
+    },
+  ): Promise<{ edits: TextEdit[] } | { error: string }>
   private onRequest(method: string, params: any): any {
     if (method === '@/tailwindCSS/sortSelection') {
       let project = this.getProject({ uri: params.uri })
@@ -903,6 +916,35 @@ export class TW {
       return {
         version: project.state.version,
       }
+    }
+
+    if (method === '@/tailwindCSS/fixAllCanonicalClasses') {
+      return this.fixAllCanonicalClasses(params.textDocument)
+    }
+  }
+
+  private async fixAllCanonicalClasses(item: {
+    uri: string
+    languageId: string
+    version: number
+    text: string
+  }): Promise<{ edits: TextEdit[] } | { error: string }> {
+    await this.init()
+
+    let project = this.getProject({ uri: item.uri })
+
+    if (!project) {
+      return { error: 'no-project' }
+    }
+
+    if (!project.enabled()) {
+      project.enable()
+      await project.tryInit()
+    }
+
+    let document = TextDocument.create(item.uri, item.languageId, item.version, item.text)
+    return {
+      edits: await project.getCanonicalClassFixes(document),
     }
   }
 
